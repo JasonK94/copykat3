@@ -31,9 +31,9 @@ print("it's jaecheon ko's modified copykat: step 10 removed")
 start_time <- Sys.time()
   set.seed(1234)
   sample.name <- paste(sam.name,"_copykat_", sep="")
-
+  print("it's jaecheon ko's modified copykat: step 10 removed")
   print("running copykat v1.1.0")
-
+  print("it's jaecheon ko's modified copykat: step 10 removed")
   print("step1: read and filter data ...")
   print(paste(nrow(rawmat), " genes, ", ncol(rawmat), " cells in raw data", sep=""))
 
