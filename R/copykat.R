@@ -19,46 +19,37 @@
 #'
 #' @examples
 #' test.ck <- copykat(rawmat=rawdata,id.type="S", ngene.chr=5, win.size=25, KS.cut=0.1,sam.name="test", distance="euclidean", norm.cell.names="", n.cores=4, output.seg="FALSE")
-
+#'
 #'
 #' test.pred <- test.ck$prediction
 #' @export
 ###
 
 
-copykat <- function(rawmat=rawdata, id.type="S", cell.line="no", ngene.chr=5,LOW.DR=0.05, UP.DR=0.1, win.size=25, norm.cell.names="", KS.cut=0.1, sam.name="", distance="euclidean", output.seg="FALSE", plot.genes="TRUE", genome="hg20", n.cores=1){
-print("it's jaecheon ko's modified copykat: step 10 removed")
-start_time <- Sys.time()
+copykat_without_step10 <- function(rawmat=rawdata, id.type="S", cell.line="no", ngene.chr=5,LOW.DR=0.05, UP.DR=0.1, win.size=25, norm.cell.names="", KS.cut=0.1, sam.name="", distance="euclidean", output.seg="FALSE", plot.genes="TRUE", genome="hg20", n.cores=1){
+  start_time <- Sys.time()
   set.seed(1234)
   sample.name <- paste(sam.name,"_copykat_", sep="")
-
-  print("running copykat v1.1.0")
-
-  print("step1: read and filter data ...")
-  print(paste(nrow(rawmat), " genes, ", ncol(rawmat), " cells in raw data", sep=""))
 
   genes.raw <- apply(rawmat, 2, function(x)(sum(x>0)))
 
   if(sum(genes.raw> 200)==0) stop("none cells have more than 200 genes")
   if(sum(genes.raw<100)>1){
     rawmat <- rawmat[, -which(genes.raw< 200)]
-    print(paste("filtered out ", sum(genes.raw<=200), " cells with less than 200 genes; remaining ", ncol(rawmat), " cells", sep=""))
   }
   ##
   der<- apply(rawmat,1,function(x)(sum(x>0)))/ncol(rawmat)
 
   if(sum(der>LOW.DR)>=1){
-    rawmat <- rawmat[which(der > LOW.DR), ]; print(paste(nrow(rawmat)," genes past LOW.DR filtering", sep=""))
+    rawmat <- rawmat[which(der > LOW.DR), ]
   }
 
   WNS1 <- "data quality is ok"
   if(nrow(rawmat) < 7000){
     WNS1 <- "low data quality"
     UP.DR<- LOW.DR
-    print("WARNING: low data quality; assigned LOW.DR to UP.DR...")
   }
 
-  print("step 2: annotations gene coordinates ...")
   if(genome=="hg20"){
   anno.mat <- annotateGenes.hg20(mat = rawmat, ID.type = id.type) #SYMBOL or ENSEMBLE
   } else if(genome=="mm10"){
@@ -66,8 +57,6 @@ start_time <- Sys.time()
   dim(rawmat)
   }
   anno.mat <- anno.mat[order(as.numeric(anno.mat$abspos), decreasing = FALSE),]
-
-# print(paste(nrow(anno.mat)," genes annotated", sep=""))
 
   ### module 3 removing genes that are involved in cell cycling
 
@@ -78,7 +67,6 @@ start_time <- Sys.time()
     anno.mat <- anno.mat[-toRev, ]
   }
   }
-#  print(paste(nrow(anno.mat)," genes after rm cell cycle genes", sep=""))
   ### secondary filtering
   ToRemov2 <- NULL
   for(i in 8:ncol(anno.mat)){
@@ -99,13 +87,10 @@ start_time <- Sys.time()
     anno.mat <-anno.mat[, -which(colnames(anno.mat) %in% ToRemov2)]
   }
 
-  # print(paste("filtered out ", length(ToRemov2), " cells with less than ",ngene.chr, " genes per chr", sep=""))
   rawmat3 <- data.matrix(anno.mat[, 8:ncol(anno.mat)])
   norm.mat<- log(sqrt(rawmat3)+sqrt(rawmat3+1))
   norm.mat<- apply(norm.mat,2,function(x)(x <- x-mean(x)))
   colnames(norm.mat) <-  colnames(rawmat3)
-
-  #print(paste("A total of ", ncol(norm.mat), " cells, ", nrow(norm.mat), " genes after preprocessing", sep=""))
 
   ##smooth data
   print("step 3: smoothing data with dlm ...")
@@ -132,7 +117,6 @@ start_time <- Sys.time()
 
       } else if(length(norm.cell.names)>1){
 
-        #print(paste(length(norm.cell.names), "normal cells provided", sep=""))
          NNN <- length(colnames(norm.mat.smooth)[which(colnames(norm.mat.smooth) %in% norm.cell.names)])
          print(paste(NNN, " known normal cells found in dataset", sep=""))
 
@@ -206,10 +190,7 @@ start_time <- Sys.time()
 
   if(length(ToRemov3)>0){
     norm.mat.relat <-norm.mat.relat[, -which(colnames(norm.mat.relat) %in% ToRemov3)]
-   #print(paste("filtered out ", length(ToRemov3), " cells with less than ",ngene.chr, " genes per chr", sep=""))
   }
-
-  #print(paste("final segmentation: ", nrow(norm.mat.relat), " genes; ", ncol(norm.mat.relat), " cells", sep=""))
 
   CL <- CL[which(names(CL) %in% colnames(norm.mat.relat))]
   CL <- CL[order(match(names(CL), colnames(norm.mat.relat)))]
@@ -236,14 +217,11 @@ start_time <- Sys.time()
   write.table(RNA.copycat, paste(sample.name, "CNA_raw_results_gene_by_cell.txt", sep=""), sep="\t", row.names = FALSE, quote = F)
 
   if(genome=="hg20"){
-  print("step 6: convert to genomic bins...") ###need multi-core
   Aj <- convert.all.bins.hg20(DNA.mat = DNA.hg20, RNA.mat=RNA.copycat, n.cores = n.cores)
 
   uber.mat.adj <- data.matrix(Aj$RNA.adj[, 4:ncol(Aj$RNA.adj)])
 
-  print("step 7: adjust baseline ...")
-
-    if(cell.line=="yes"){
+  if(cell.line=="yes"){
 
                mat.adj <- data.matrix(Aj$RNA.adj[, 4:ncol(Aj$RNA.adj)])
                write.table(cbind(Aj$RNA.adj[, 1:3], mat.adj), paste(sample.name, "CNA_results.txt", sep=""), sep="\t", row.names = FALSE, quote = F)
@@ -258,7 +236,6 @@ start_time <- Sys.time()
                   saveRDS(hcc, file = paste(sample.name,"clustering_results.rds",sep=""))
 
                    #plot heatmap
-                   print("step 8: ploting heatmap ...")
                   my_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(n = 3, name = "RdBu")))(n = 999)
 
                    chr <- as.numeric(Aj$DNA.adj$chrom) %% 2+1
@@ -336,7 +313,6 @@ start_time <- Sys.time()
                           }
 
                           end_time<- Sys.time()
-                          print(end_time -start_time)
 
                          reslts <- list(cbind(Aj$RNA.adj[, 1:3], mat.adj), hcc)
                          names(reslts) <- c("CNAmat","hclustering")
@@ -368,6 +344,7 @@ start_time <- Sys.time()
 
   ################removed baseline adjustment
         results.com.rat <- uber.mat.adj-apply(uber.mat.adj[,which(com.pred=="diploid")], 1, mean)
+
         results.com.rat <- apply(results.com.rat,2,function(x)(x <- x-mean(x)))
         results.com.rat.norm <- results.com.rat[,which(com.pred=="diploid")]; dim(results.com.rat.norm)
 
@@ -437,7 +414,7 @@ start_time <- Sys.time()
   write.table(res, paste(sample.name, "prediction.txt",sep=""), sep="\t", row.names = FALSE, quote = FALSE)
 
   ####save copycat CNA
-  write.table(cbind(Aj$RNA.adj[, 1:3], mat.adj), paste(sample.name, "CNA_results.txt", sep=""), sep="\t", row.names = FALSE, quote = F)
+  write.table(cbind(anno.mat2[, 1:7], mat.adj), paste(sample.name, "CNA_results.txt", sep=""), sep="\t", row.names = FALSE, quote = F)
 
   ####%%%%%%%%%%%%%%%%%next heatmaps, subpopulations and tSNE overlay
 
@@ -486,7 +463,6 @@ start_time <- Sys.time()
 
 }
   end_time<- Sys.time()
-  print(end_time -start_time)
 
   reslts <- list(res, cbind(Aj$RNA.adj[, 1:3], mat.adj), hcc)
   names(reslts) <- c("prediction", "CNAmat","hclustering")
@@ -595,7 +571,6 @@ start_time <- Sys.time()
     ####%%%%%%%%%%%%%%%%%next heatmaps, subpopulations and tSNE overlay
 
     if(output.seg=="TRUE"){
-      print("generating seg files for IGV viewer")
 
       thisRatio <- cbind(anno.mat2[, c(2,3,1)], mat.adj)
       Short <- NULL
@@ -639,7 +614,6 @@ start_time <- Sys.time()
 
     }
     end_time<- Sys.time()
-    print(end_time -start_time)
 
     reslts <- list(res, cbind(anno.mat2[, 1:7], mat.adj), hcc)
     names(reslts) <- c("prediction", "CNAmat","hclustering")
